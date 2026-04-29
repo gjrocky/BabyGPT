@@ -1,11 +1,17 @@
 # BabyGPT
 My own LLM built entirely from scratch (In Effort to spread knowledge on LLM development)
 
-BabyGPT is A small but real language model built entirely from scratch using Python and PyTorch — no Hugging Face, no pre-trained weights, no shortcuts.
+BabyGPT is A small but real language model built entirely from scratch using Python and PyTorch, no shortcuts at all .
 
-Feed it any `.txt` file.  It learns the statistical patterns in that text and generates new text in the same style.
+with BabyGPT you feed it any `.txt` file.  It learns the statistical patterns in that text and generates new text in the same style.
+This initially started as an NLP, detecting text patterns and predicting the next words that finish the sentence.
 
-The architecture is a **decoder-only Transformer** — the same fundamental design behind GPT-2, GPT-3, and every modern LLM.  The tokenizer is **Byte-Pair Encoding (BPE)** — the same algorithm used by GPT-2 and GPT-4.  Small enough to train on a laptop in minutes.
+Ex. User: "May the force"
+    BabyGPT: "be with you"
+
+This model has a **decoder-only Transformer** architecture, commoonly used in most popular LLM's.
+The tokenizer was built from scratch initially starting as a **Character-Level tokenizer** (which eventually turned out better suited for NLP's) and evolved into a **Byte-Pair Encoding (BPE) tokenizer**, commonly used in GPT models.
+I'll go over the pros, cons, and differences between the two later. But for now try running yourself :)
 
 ---
 
