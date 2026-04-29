@@ -6,12 +6,13 @@ BabyGPT is A small but real language model built entirely from scratch using Pyt
 with BabyGPT you feed it any `.txt` file.  It learns the statistical patterns in that text and generates new text in the same style.
 This initially started as an NLP, detecting text patterns and predicting the next words that finish the sentence.
 
-Ex. User: "May the force"
-    BabyGPT: "be with you"
+    Ex. User: "May the force"
 
-This model has a **decoder-only Transformer** architecture, commoonly used in most popular LLM's.
+        BabyGPT: "be with you"
+
+This model has a **Decoder-only Transformer** architecture, commoonly used in most popular LLM's.
 The tokenizer was built from scratch initially starting as a **Character-Level tokenizer** (which eventually turned out better suited for NLP's) and evolved into a **Byte-Pair Encoding (BPE) tokenizer**, commonly used in GPT models.
-I'll go over the pros, cons, and differences between the two later. But for now try running yourself :)
+I'll go over the pros, cons, and differences, and defintions of everything later on. But for now try running it for yourself. I've included my BabyGPT 1.1B param model, small enough to run on your laptop ;)
 
 ---
 
