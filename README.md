@@ -14,80 +14,207 @@ This model has a **Decoder-only Transformer** architecture, commoonly used in mo
 The tokenizer was built from scratch initially starting as a **Character-Level tokenizer** (which eventually turned out better suited for NLP's) and evolved into a **Byte-Pair Encoding (BPE) tokenizer**, commonly used in GPT models.
 I'll go over the pros, cons, and differences, and defintions of everything later on. But for now try running it for yourself. I've included my BabyGPT 1.1B param model, small enough to run on your laptop ;)
 
----
-
-## Quick Start
+### 1. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Download training data (Tiny Shakespeare is a great start):
-```
-https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt
-```
-Save it as `data.txt` in this folder, then:
+### 2. Collect training data
+
+Download conversation datasets from HuggingFace (or anywhere you choose) into `raw/`:
+
+Note * I made this mistake very early on while researching and building this model. Pretraining is purely for the model to learn words (tokens), Pretraining data is reserved for teaching the model its
+knowledge. Facts, Grammar, writing style etc. 
+
+- For a well rounded model I suggest searching hugging face and finding some already put together raw .txt data. These are a few of the common popular websites I decided to use.
+
+- The pretraining phase is essentially what gives the model its set of weights in every matrice layer.
+
+- Finetuning, is strictly meant for tuning your model to recieve questions, statements etc. and respond like a traditional chatbot. Try to use chat style raw .txt files when finetuning, in the format of
+    User: "question_here?"
+    Assistant: "response_here"
+
+- I've added some flags to help format data that is not in this current format. I'll explains the flags later on !
+
+P.S: again make sure all data is a raw .txt file !!
+
+P.S x2: Web Scraping is not the best approach, again you want a model that is a knowleageable and accurate as possible, so if you web scrape your data make sure to clean it of any innaccurate noise. Remeber, keep ethics and morality in mind when creating your LLM pwease kitten !!!
 
 ```bash
-python train.py --data data.txt --epochs 5
-python chat.py --checkpoint checkpoint.pt
+Pre-Training Data
+python collect/wikipedia.py --out raw/wikipedia --limit 100000
+python collect/github.py --languages python javascript --out raw/github --limit 500000
+python collect/reddit.py --out raw/reddit --limit 200000
+python collect/stackoverflow.py --out raw/stackoverflow --limit 500000
+python collect/arxiv.py --abstracts-only --out raw/arxiv --limit 100000
+python collect/common_crawl.py --out raw/common_crawl --limit 1000000
+
+Finetuning Data
+python collect/sharegpt.py --preset ultrachat --limit 50000 --out raw/chat_ultra
+python collect/sharegpt.py --dataset teknium/OpenHermes-2.5 --format sharegpt --out raw/openhermes --limit 50000
+python collect/sharegpt.py --dataset databricks/dolly-15k --format alpaca --out raw/dolly
+python collect/sharegpt.py --dataset Open-Orca/OpenOrca --format orca --out raw/openorca --limit 50000
+python collect/sharegpt.py --dataset truthful_qa --config generation --format truthfulqa --out raw/truthfulqa
+python collect/sharegpt.py --dataset OpenAssistant/oasst1 --format messages --out raw/openassistant
+python collect/sharegpt.py --dataset garage-bAInd/Open-Platypus --format alpaca --out raw/platypus
+python collect/sharegpt.py --dataset WizardLM/WizardLM_evol_instruct_V2_196k --format sharegpt --out raw/wizardlm --limit 50000
+python collect/sharegpt.py --dataset HuggingFaceH4/CodeAlpaca_20K --format alpaca --out raw/codealpaca
+python collect/sharegpt.py --preset vicuna --limit 50000 --out raw/sharegpt
+python collect/gutenberg.py --out raw/gutenberg
 ```
 
-Use `--device cpu` if you have no GPU. More epochs = better output.
+### 3. Tokenize the corpus
 
----
+Convert all `.txt` files into binary token files for fast training:
+
+```bash
+python collect/prepare.py --raw raw/ --out data/ --vocab 32000
+```
+
+This will create `data/train.bin`, `data/val.bin`, and `data/tokenizer.json`.
+
+### 4. Pretrain the model
+
+```bash
+python train.py \
+  --train-bin data/train.bin \
+  --val-bin   data/val.bin \
+  --tokenizer data/tokenizer.json \
+  --n-embd 1920 --n-layer 24 --n-head 16 \
+  --steps 100000 --bf16 --grad-checkpoint \
+  --out checkpoint.pt
+```
+
+Adjust `--n-embd`, `--n-layer`, `--n-head` to control model size. Add `--adam8bit` if you run out of VRAM.
+
+### 5. Fine-tune into a chatbot
+
+```bash
+python finetune.py \
+  --checkpoint checkpoint.pt \
+  --data raw/ultrachat raw/openhermes raw/dolly \
+  --steps 10000 --lr 1e-4 \
+  --bf16 --grad-checkpoint \
+  --out sft_checkpoint.pt
+```
+
+### 6. Chat with the model
+
+**Terminal:**
+```bash
+python chat.py --checkpoint sft_checkpoint.pt
+```
+
+**Web app** (from the `llm-web/` directory):
+```bash
+cd ../llm-web
+pip install -r requirements.txt
+CHECKPOINT=../llm/sft_checkpoint.pt uvicorn app:app --host 0.0.0.0 --port 8000
+```
+Then open `http://localhost:8000`.
 
 ## Tech Stack
 
 | Technology | Purpose |
 |---|---|
-| **Python 3.10+** | Primary language |
-| **PyTorch** | Tensors, automatic gradients, GPU acceleration |
-| **tqdm** | Progress bars during training |
+| **Python 3.10+** | Primary language (and the best language (argue with a wall) ) |
+| **PyTorch** | [Tensors](https://docs.pytorch.org/docs/stable/tensors.html) , [automatic gradients](https://docs.pytorch.org/docs/stable/autograd.html) , and GPU acceleration |
+| **tqdm** | Gives you some pwetty progress bars while training |
 
 ---
 
-## How It All Fits Together
+## Here Is the High-Level Flow of it all my dudes
 
 ```
-data.txt  ──►  data.py  ──►  train.py  ──►  checkpoint.pt
-                                                   │
-                                              chat.py  ──►  Your terminal
+data.txt  ──►  data.py  ──►  train.py  ──►  checkpoint.pt ──► finetune.py ──► stf_checkpoint.pt
+                                                                                       │
+                                                                                llm-web/app.py  ──►  localhost:8000
 ```
 
-1. `data.py` trains a BPE tokenizer that maps text ↔ integer token ids
-2. `train.py` encodes the corpus and teaches the model to predict the next token
-3. Trained weights + tokenizer are saved to `checkpoint.pt`
-4. `chat.py` loads the checkpoint and lets you type prompts
+1. `data.py` trains a BPE tokenizer that maps text to integer token ids
+2. `train.py` encodes le data and teaches le model to predict le next token (gives the model it's weights via the tokenizer thingy above this thingy)
+3. Trained weights + tokenizer are saved to `checkpoint.pt` (there is checkpointing at every 1000 steps so you can resume if something happens)
+4. `chat.py` loads the checkpoint and lets you type prompts in your terminal (I highly reccommend using my llm-web version instead, its so pwetty)
 
 ---
 
-## What This Model Actually Is
+## Now into the good stuff, the real DOCUMENTATION >:)
 
-This is **not** a chatbot in the traditional sense — it is a **next-token predictor**.  Its one job is: given some text, predict what token comes next.
+Originally this was **not** a chatbot in the traditional sense, instead it was a **next-token predictor**.  it's only job was to predict what token comes next given an input. But then I got curious >:) !!
 
-When you type a prompt into `chat.py`, it doesn't "understand" your question and formulate an answer.  It continues your text in the style of whatever it was trained on.  Train it on Shakespeare and type `"To be or"` — it will likely continue with `"not to be"`, not because it reasoned about it, but because that pattern dominated the training data.
+I learned that ChatGPT, Claude, Gemini etcc. all **started** as base language models trained pretty much like this one, a beefed up NLP. While I was in school I remember learning a lot about NLP and more specifically cleaning and tokenizing text. 
+I read this lovely book textbook [Natural Language Processing by Jacob Eisenstein](eisenstein_nlp_textbook (1)) and really didn't see a vision into how this was used, which is why this started as a next token predictor instead of a true chatbot style LLM.
 
-### Base LM vs Chatbot
+But then I learned about the capabilites of PyTorch, the different types of tokenizers, capabilities of tensors allowing GPU acceleration, backpropogation, gradient descent, and most importantly model weights and instruction tuning. This is where finetune.py was added !
 
-| | This model (base LM) | A chatbot (e.g. ChatGPT) |
-|---|---|---|
-| **What it does** | Continues text | Responds to instructions |
-| **Training** | Next-token prediction on raw text | Same base, then fine-tuned on dialogue |
-| **Input** | A prompt to continue | A user message |
-| **Output** | More text in the same style | An answer/response |
+I'll dive into each file and their functionality further, but I do want to give you some vocabulary and their importance as a pre step to understanding whats going on in the next step.
 
-ChatGPT, Claude, and Llama all **started** as base language models trained exactly like this one.  The chatbot behavior comes from a second stage called **instruction tuning**.
+Lets start with the nitty gritty stuff
 
-### What You Can Train It On
+    - Neural Network: A function that takes numbers in, transforms them through layers of math, and produces numbers out. The math in each layer is just matrix multiplication followed by a non-linear activation function.
+    
+    - Weights: The actual learned numbers inside the model. Every linear layer, every attention projection, every embedding is a matrix of floating point numbers (Tensors via PyTorch). Everything the model knows is stored as these numbers. Training is just the process of finding the right values for all of them.
+    
+    - Loss: A single number that measures how wrong the model's prediction was. Lower = better. The model outputs a probability distribution over the entire vocabulary — loss measures how much probability it assigned to the correct next token. If the correct token got 90% probability, loss is low. If it got 1% probability, loss is high.
+        - There's Val Loss: loss on held-out data the model has never seen. This is the best measure of model quality.
+        - And theres also Train loss: loss on the data the model is actively learning from
+        
+    - Backpropagation: The algorithm that figures out how much each weight contributed to the error
+    
+    - Cross-Entropy: Measures the difference between the model's predicted probability distribution and the true distribution (which is 100% on the correct next token, 0% everywhere else) and penalizes the model heavily when it assigns low probability to the correct answer.
+    
+    - Embedding: Converting a token ID (an integer) into a dense vector of floats
+    
+    - Logits: Raw unnormalized scores the model outputs for every token in the vocabulary before softmax. The highest logit is the model's best guess for next token.
+    
+    - Softmax: converts logits into probabilities that sum to 1.0. Ex. [2.1, 0.3, -1.4] turns into [0.76, 0.13, 0.11]
 
-Since it's a general text predictor, it works on anything:
+    - CausalSelfAttention: The function that lets each token look back at previous tokens and decide which ones are relevant to its current meaning.
 
-- **Shakespeare** → generates Shakespearean prose
-- **Your own notes** → mimics your writing style
-- **Source code** → generates code in the same language/style
-- **Song lyrics** → generates new lyrics in that artist's style
-- **Dialogue-formatted text** → behaves like a basic chatbot
+These all work off of eachother, I tried to order them to the best of my ability to give you an understanding of how they work together.
+
+Next I want to go through some of the vocab I had to experienced through trial and error when I actually started training this thing, somethings to avoid and keep an eye on::
+
+    - Learning Rate: Controls how big each weight update is after every backward pass. It's a very very small number
+    
+    - Overfitting: In this context, this is when val loss rises while train loss keeps falling The model is starting memorizing the data instead of prediccting. This leads to  your model hallucinating
+    
+    - Underfitting; When your model hasn't trained enough data, and it doesn't know what to do resulting in high val lass and train loss
+    
+    - Divergence: When your model isn't learning anything, it probably means your learning rate is too high. You can tell when your val loss over time keeps climbing instead of decreasing.
+
+    - Parameters: Essentially another word for weights, it's every single learnable number in the model. The parameter count is the total of all of them added together.
+
+The general rule's are:
+
+| Thingy's | Rule|
+| --- | --- |
+| **Learning Rate** | If too high, the loss will bounce back and forht and you'll miss the lowest loss, if too low it'll take 10x longer, If just right it'll have a nice descent down to a nice val loss |
+| **Overfitting** | Keep an eye out on your val loss and train loss, val loss should be around 1.2 for a good model, keeping in mind you need to finetune |
+| **Parameters** | The larger Param model, the more raw data you'll need to pretrain on, or else your model will indeed hallucinate (I did this because I was lazy, and wasted alot of money training it on RunPod lmaoo) |
+
+Here is a good guide for where your val loss should be on each stage of training:
+
+Pretraining
+
+| Val Loss | Quality |
+|---|---|
+| > 3.0 | Still learning, pretty early in training |
+| 2.0 – 3.0 | Meh |
+| 1.5 – 2.0 | Its Aight |
+| 1.2 – 1.5 | Pretty Solid I would say |
+| < 1.2 | Very Solid, but be careful not to overfit mah boy |
+
+Fine-tuning
+
+| Val Loss | Quality |
+|---|---|
+| > 1.4 | Still learning|
+| 1.2 – 1.4 | Usable|
+| 1.0 – 1.2 | Good|
+| 0.8 – 1.0 | Pretty Solid I would say |
+| < 0.8 | Very Solid, but be careful not to overfit mah boy |
 
 ---
 
