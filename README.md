@@ -3,7 +3,7 @@ My own LLM built entirely from scratch (In Effort to spread knowledge on LLM dev
 
 BabyGPT is A small but real language model built entirely from scratch using Python and PyTorch, no shortcuts at all .
 
-with BabyGPT you feed it any `.txt` file.  It learns the statistical patterns in that text and generates new text in the same style.
+With BabyGPT you feed it any `.txt` file.  It learns the statistical patterns in that text and responds like a traditional chatbot.
 This initially started as an NLP, detecting text patterns and predicting the next words that finish the sentence.
 
     Ex. User: "May the force"
