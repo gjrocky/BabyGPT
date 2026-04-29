@@ -222,35 +222,59 @@ Fine-tuning
 
 ---
 
-### `data.py` — The BPE Tokenizer
+### `data.py`: BPE Tokenizer
 
-Converts raw text into numbers the model can work with, and back again.
+This file converts raw text into numbers the model can work with, and back again (Encoding, Decoding).
 
-Neural networks don't read text — they read integers.  BPE (Byte-Pair Encoding) is the algorithm that decides which sequences of characters get their own integer id.
+Since neural networks don't read text and instead read integers, we need to tokenzie the words and encode an integer to them, which is where BPE (Byte-Pair Encoding) comes in. BPE is the algorithm that decides which sequences of characters (words lol) get their own integer id.
 
-#### Why BPE instead of character-level?
+#### Why BPE instead of continuing with character-level?
 
-Character-level tokenization assigns one id per character (`h`, `e`, `l`, `l`, `o` = 5 tokens).  BPE merges frequent pairs until common words and subwords get single ids (`hello` = 1 token).
+Character-level tokenization assigns one id/integer per character (`h`, `e`, `l`, `l`, `o` = 5 tokens).  BPE merges frequent id pairs until common words and subwords get single ids, so now (`hello` = 1 token).
 
 This matters for two reasons:
-1. **Compression** — fewer tokens means the context window covers more actual text.  128 BPE tokens ≈ 300–500 characters of English prose.
-2. **Richer signal per step** — the model predicts `hello` as one unit rather than predicting each letter individually, which is a much harder and less semantically meaningful task.
-
-GPT-2 uses BPE with a 50,257-token vocabulary.  This project trains one from scratch.
+1. **Compression**: Fewer tokens means the context window (the amount of input and output info an llm can remember at once) covers more actual text.
+2. **Richer signal per step**: The model predicts `hello` as one unit instead of predicting each letter individually, which is a much harder and less meaningful task.
 
 #### How BPE training works (step by step)
 
 ```
-Initial state:  "hello world" → [104, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100]
+Every character becomes its raw byte value (0–255):
+
+ "hello" → [104, 101, 108, 108, 111]
                                  (one integer per byte, 0-255)
 
-Step 1: count all adjacent pairs
-        (108, 108) appears most often → merge it into id 256
-        vocab now: {... 256: b'll' ...}
+Step 1: We would then count all adjacent pairs, and grab the most frequent pair
+        [104, 101]
+        [101, 108]
+        [108, 108]  <-- Most frequent pair
+        [108, 111]
+        
 
-Step 2: count again on the merged sequence
-        next most frequent pair → merge into 257
-        ...repeat until vocab reaches target size
+Step 2: We then merge the most frequent pair and assign the pair with a new token ID (starting at 256) and replace every occurence of that pair in the corpus (raw txt data) with the new Token ID
+    now "ll" in "hello"
+    [108,108] or "ll" is assigned the token ID 256
+    now the "hello" = [104, 101, 256, 111]
+
+Step 3: We now update the vocabulary, its byte representation is the concatenation of the two tokens that were merged
+    ex. the byte representation of "l" is simply "l"
+        so "l" + "l" = "ll"
+        now in your vocabulary -> vocab[256] = b'll'
+
+Step 4: We repeat the process by counting pairs again, finding the most frequent pair, assigning a new id, and updating the vocab (Keep in mind, this is done on the entire corpus, not just one word at a time)
+        [104,101] -> he
+        [101,256] -> ell
+        [256,111] -> llo
+        lets pick "ell"
+        now vocab[257] = b'ell'
+
+        [104,257] -> hell (hahaaa)
+        [257,111] -> ello
+        lets pick "ello"
+        now vocab[258] = b'ello'
+
+        you should be getting it by now lol
+        eventually you will now have an entire word 'hello' assigned to 1 token id
 ```
 
 #### `BPETokenizer` class
@@ -258,10 +282,12 @@ Step 2: count again on the merged sequence
 | Method | What it does |
 |---|---|
 | `train(text, vocab_size)` | Counts pair frequencies, merges the most common pair into a new token, repeats until `vocab_size` is reached |
-| `encode(text)` | Converts a string to bytes, then greedily applies the learned merges (highest-priority first) until no more apply |
-| `decode(ids)` | Maps each id back to its byte sequence, concatenates, decodes as UTF-8 |
-| `state()` | Returns a JSON-serialisable dict of all merges and vocab entries (saved inside the checkpoint) |
+| `encode(text)` | Converts a string to bytes, then applies the learned merges (highest-priority first) until no more apply |
+| `decode(ids)` | Maps each id back to its byte sequence, concatenates, decodes as UTF-8 (allows me to reference the id back to the original text) |
+| `state()` | Returns a JSON-serialisable dict of all merges and vocab entries (this is saved inside the checkpoint.pt file) |
 | `from_state(data)` | Reconstructs a tokenizer from a dict produced by `state()` |
+
+Read this table and the functions available in the BPETokenizer class, keeping in mind the steps I just explained above this table.
 
 **Vocabulary layout:**
 
@@ -271,27 +297,20 @@ Step 2: count again on the merged sequence
 | 256+ | Merged tokens learned during training |
 
 Because every possible byte is already in the vocabulary, the encoder can **never** encounter an unknown token.  Any valid UTF-8 text can be encoded.
-
 ---
 
-### `model.py` — The Neural Network (BabyGPT)
+#### `CausalSelfAttention`: The "Reading" Mechanism
 
-Defines the Transformer architecture.  Four classes that stack on top of each other.
-
----
-
-#### `CausalSelfAttention` — The "Reading" Mechanism
-
-The heart of the Transformer.  Lets the model learn which previous tokens are most relevant when predicting the next one.
+The heart of the Transformer in model.py. It Lets the model learn which previous tokens are most relevant when predicting the next one.
 
 **Q, K, V — Queries, Keys, Values:**
 
-Think of it like a search engine.  For each token position:
+Think of it like a search engine for each token position:
 - **Query (Q):** "What am I looking for?"
 - **Key (K):**   "What do I offer?"
 - **Value (V):** "What information do I contain?"
 
-The dot product `Q × Kᵀ` scores how relevant each past position is.  Dividing by `√head_dim` keeps the values numerically stable (prevents softmax from saturating).  `softmax` turns scores into probabilities (an "attention map").  Finally `att × V` collects the weighted sum of information from all past positions.
+The dot product `Q × Kᵀ` scores how relevant each past position is.  Dividing by `√head_dim` keeps the values numerically stable (prevents softmax from becoming saturated). The `softmax` essentially turns scores into probabilities (an "attention map"), then finally `att × V` collects the weighted sum of information from all past positions.
 
 **Multiple heads:**
 
@@ -401,10 +420,10 @@ At every position, the model is asked: *"given what you've seen so far, what com
 5. opt.step()           → update every weight: w ← w − lr × gradient
 ```
 
-**Why cross-entropy loss?**
-The model outputs a probability distribution over the vocabulary.  Cross-entropy measures how different that distribution is from the "correct" distribution (probability 1.0 on the actual next token, 0.0 everywhere else).  Minimising it forces the model to assign high probability to the correct next token.
+**What is cross-entropy loss?**
+The model outputs a probability distribution over the vocabulary so, cross-entropy measures how different that distribution is from the "correct" distribution (probability 1.0 on the actual next token, 0.0 everywhere else).  Minimizing it forces the model to assign high probability to the correct next token.
 
-**Why AdamW?**
+**What is AdamW?**
 AdamW is a variant of gradient descent that:
 1. Adapts the learning rate per parameter based on the history of gradients (parameters with noisy gradients get smaller updates).
 2. Applies **weight decay** — a regularisation penalty that nudges weights toward zero, discouraging the model from memorising rare patterns and encouraging generalisation.
@@ -526,14 +545,14 @@ For comparison: GPT-2 small = 117M params, 50,257-token vocab.  Starting small i
 
 ---
 
-## How to Improve Quality
+## How to Improve the Quality
 
 Quality is a product of three things:
 
-1. **Data** — More text = better.  Varied, high-quality text = better.  The model will sound like whatever it is trained on.
-2. **Tokenizer** — Larger `--bpe_vocab_size` means richer tokens and better compression, but takes longer to train and requires more model capacity to be useful.
-3. **Model size** — Increase `--n_embd`, `--n_layer`, `--n_head` for more capacity.  More parameters = more patterns the model can store.
-4. **Training time** — More epochs means more gradient steps.  Watch the loss fall — lower loss = better predictions.  Starting around ~7.0 (BPE), a well-trained small model should reach ~3.0–4.0.
+1. **Data** — More and more varied text = better. The model will sound like whatever it is trained on.
+2. **Tokenizer** — Larger `--bpe_vocab_size` means richer tokens and better compression (keep in mind, it does take longer to train).
+3. **Model size** — Increase `--n_embd`, `--n_layer`, `--n_head` for more capacity, more parameters = more patterns the model can store (more parameters means you need a larger corpus, dont replicate my mistakes).
+4. **Training time** — Keep an eye on the loss value, the lower loss the better predictions, be sure not to overfit though.
 
 ```bash
 # Bigger vocabulary, bigger model, longer training
@@ -547,11 +566,11 @@ python train.py --data data.txt --epochs 20 --bpe_vocab_size 2000 --n_embd 256 -
 | Step | Status | What it adds |
 |---|---|---|
 | **RLHF** | Pending | Reinforcement learning, basically takes in human feedback and helps the model understand preferred human responses |
-| **Learn Vision Modeling** | I want to build a robotic arm that can speak to me and help me troubleshoot hardware projects by looking at them :) |
+| **Learn Vision Modeling** | Working on it | I want to build a robotic arm that can speak to me and help me troubleshoot hardware projects by looking at them :) |
 
 ---
 
-### Step 1 — Data Collection (`collect/sharegpt.py`)
+### Here are some function explanations
 
 Downloads datasets from HuggingFace and saves them as `.txt` files into `raw/`. Each file contains conversations separated by `---`. Supports multiple dataset formats out of the box.
 
@@ -571,7 +590,7 @@ python collect/sharegpt.py --dataset teknium/OpenHermes-2.5 --format sharegpt --
 
 ---
 
-### Step 2 — Data Preparation (`collect/prepare.py`)
+### `collect/prepare.py`
 
 Takes all the `.txt` files from `raw/` and converts them into binary token files for fast training. This only needs to run once — the output `.bin` files are what `train.py` actually reads.
 
@@ -594,7 +613,7 @@ python collect/prepare.py --raw raw/ --out data/ --vocab 32000
 
 ---
 
-### Step 3 — Tokenizer (`data.py`)
+### `data.py`
 
 A from-scratch BPE tokenizer with no external dependencies. Converts raw text into integer token IDs and back.
 
@@ -609,7 +628,7 @@ A from-scratch BPE tokenizer with no external dependencies. Converts raw text in
 
 ---
 
-### Step 4 — Model (`model.py`)
+### `model.py`
 
 The transformer architecture. Four classes that stack on top of each other to form `BabyGPT`.
 
@@ -622,7 +641,7 @@ The transformer architecture. Four classes that stack on top of each other to fo
 
 ---
 
-### Step 5 — Pretraining (`train.py`)
+### `train.py`
 
 Trains BabyGPT to predict the next token across all text. This is where the model learns language, facts, and reasoning patterns.
 
@@ -646,7 +665,7 @@ python train.py \
 
 ---
 
-### Step 6 — Fine-tuning (`finetune.py`)
+### `finetune.py`
 
 Takes the pretrained checkpoint and teaches it to be a chatbot. The key difference from pretraining: loss is only computed on assistant turns, not user turns. This teaches the model to respond rather than just continue text.
 
