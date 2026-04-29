@@ -542,41 +542,12 @@ python train.py --data data.txt --epochs 20 --bpe_vocab_size 2000 --n_embd 256 -
 
 ---
 
-## Next Steps (How This Grows Into a Real LLM)
+## My Next Steps
 
 | Step | Status | What it adds |
 |---|---|---|
-| **BPE Tokenization** | ✅ Done | Subword vocab — more efficient, richer tokens |
-| **Larger dataset** | Pending | Billions of tokens (Common Crawl, books, Wikipedia) |
-| **Bigger model** | Pending | More layers, wider embeddings, more heads |
-| **Instruction tuning** | Pending | Fine-tune on `(question → answer)` pairs — this is what makes a chatbot |
-| **RLHF** | Pending | Reinforcement learning from human feedback — aligns output with human preferences |
-
-The architecture in `model.py` is the same foundation all the way up.  Scale and data are the only real differences between this and GPT.
-
-
-
----
-
-## The Full Training Pipeline
-
-```
-collect/sharegpt.py  ──►  raw/*.txt
-                               │
-                          collect/prepare.py
-                               │
-                    data/train.bin + data/val.bin
-                               │
-                           train.py
-                               │
-                         checkpoint.pt
-                               │
-                          finetune.py  ◄──  raw/ (conversation data)
-                               │
-                       sft_checkpoint.pt
-                               │
-                           app.py / chat.py
-```
+| **RLHF** | Pending | Reinforcement learning, basically takes in human feedback and helps the model understand preferred human responses |
+| **Learn Vision Modeling** | I want to build a robotic arm that can speak to me and help me troubleshoot hardware projects by looking at them :) |
 
 ---
 
