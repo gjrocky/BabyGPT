@@ -1,10 +1,7 @@
 # BabyGPT
 My own LLM built entirely from scratch (In Effort to spread knowledge on LLM development)
 
-
-# LLM From Scratch
-
-A small but real language model built entirely from scratch using Python and PyTorch — no Hugging Face, no pre-trained weights, no shortcuts.
+BabyGPT is A small but real language model built entirely from scratch using Python and PyTorch — no Hugging Face, no pre-trained weights, no shortcuts.
 
 Feed it any `.txt` file.  It learns the statistical patterns in that text and generates new text in the same style.
 
