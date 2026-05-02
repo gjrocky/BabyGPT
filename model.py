@@ -194,8 +194,8 @@ class VisionBabyGPT(nn.Module):
         if targets is not None:
             text_logits = logits[:, num_img:, :]
             loss = F.cross_entropy(
-                text_logits.view(-1, text_logits.size(-1)),
-                targets.view(-1),
+                text_logits.reshape(-1, text_logits.size(-1)),
+                targets.reshape(-1),
             )
 
         return logits, loss
