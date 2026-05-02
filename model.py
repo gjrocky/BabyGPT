@@ -152,3 +152,77 @@ class BabyGPT(nn.Module):
             idx      = torch.cat((idx, idx_next), dim=1)
 
         return idx
+
+
+class VisionBabyGPT(nn.Module):
+
+    NUM_IMG_TOKENS = 49  # ViT-B/32: (224/32)^2 = 49 patch tokens
+
+    def __init__(self, lm: BabyGPT, clip_hidden: int = 768) -> None:
+        super().__init__()
+        self.lm        = lm
+        self.vision_proj = nn.Linear(clip_hidden, lm.tok_emb.embedding_dim)
+
+    def forward(
+        self,
+        idx:            torch.Tensor,
+        targets:        torch.Tensor | None = None,
+        image_features: torch.Tensor | None = None,
+    ):
+        B, T = idx.shape
+        pos      = torch.arange(T, device=idx.device)
+        text_emb = self.lm.drop(self.lm.tok_emb(idx) + self.lm.pos_emb(pos))
+
+        if image_features is not None:
+            img_emb = self.vision_proj(image_features)   # (B, 49, n_embd)
+            x       = torch.cat([img_emb, text_emb], dim=1)
+            num_img = img_emb.shape[1]
+        else:
+            x       = text_emb
+            num_img = 0
+
+        for block in self.lm.blocks:
+            if self.lm.gradient_checkpointing and self.lm.training:
+                x = grad_checkpoint(block, x, use_reentrant=False)
+            else:
+                x = block(x)
+
+        x      = self.lm.ln_f(x)
+        logits = self.lm.head(x)
+
+        loss = None
+        if targets is not None:
+            text_logits = logits[:, num_img:, :]
+            loss = F.cross_entropy(
+                text_logits.view(-1, text_logits.size(-1)),
+                targets.view(-1),
+            )
+
+        return logits, loss
+
+    @torch.no_grad()
+    def generate(
+        self,
+        idx:            torch.Tensor,
+        max_new_tokens: int,
+        temperature:    float = 1.0,
+        top_k:          int | None = None,
+        image_features: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        num_img  = self.NUM_IMG_TOKENS if image_features is not None else 0
+        max_text = self.lm.block_size - num_img
+
+        for _ in range(max_new_tokens):
+            idx_cond  = idx[:, -max_text:]
+            logits, _ = self(idx_cond, image_features=image_features)
+            logits    = logits[:, -1, :] / temperature
+
+            if top_k is not None:
+                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+                logits[logits < v[:, [-1]]] = float("-inf")
+
+            probs    = F.softmax(logits, dim=-1)
+            idx_next = torch.multinomial(probs, num_samples=1)
+            idx      = torch.cat((idx, idx_next), dim=1)
+
+        return idx

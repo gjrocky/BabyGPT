@@ -1,12 +1,11 @@
-# Core — model training
 torch>=2.2.0
 tqdm>=4.65.0
 numpy>=1.24.0
-
-# Data collection
-datasets>=2.18.0          # HuggingFace datasets (Wikipedia, C4, ArXiv, The Stack, Reddit)
-huggingface_hub>=0.22.0   # authentication + caching for HF datasets
-requests>=2.31.0          # direct HTTP downloads (Gutenberg, SO dump)
-py7zr>=0.21.0             # extract Stack Exchange .7z archives
-beautifulsoup4>=4.12.0    # HTML tag stripping (Stack Overflow body cleanup)
-lxml>=5.1.0               # fast XML parser (Stack Exchange Posts.xml)
+datasets>=2.18.0
+huggingface_hub>=0.22.0
+requests>=2.31.0
+py7zr>=0.21.0
+beautifulsoup4>=4.12.0 
+lxml>=5.1.0 
+transformers>=4.40.0
+Pillow>=10.0.0
