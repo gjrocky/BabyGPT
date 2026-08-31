@@ -1,0 +1,21 @@
+# Data
+data/
+raw/
+
+# Checkpoints
+*.pt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+*.egg-info/
+
+# Markdown
+*.md
+
+# Misc
+.env
+*.log
